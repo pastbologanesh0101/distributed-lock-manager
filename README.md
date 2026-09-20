@@ -192,3 +192,44 @@ on every push and pull request, on Python 3.11 and 3.12.
 - `acquire()` on a resource the *same* client already validly holds is
   rejected (not silently renewed) — this keeps "get a new lease" and
   "extend my current lease" as two distinct, unambiguous operations.
+
+## Troubleshooting / FAQ
+
+**`renew()` keeps failing even though I'm sure I'm the current holder.**
+Once a lease's TTL has elapsed, `renew()` rejects it with `"lease has
+expired"` — even for the original holder, even though `lease.holder_id`
+technically still matches. An expired holder is not a valid holder; there
+is no grace period. If your renewal cadence is close to your TTL (e.g.
+renewing every 5s on a 5s TTL), any scheduling jitter, GC pause, or slow
+call to `renew()` itself can push you past expiry. Fix it by renewing well
+before the deadline (a renewal interval of roughly TTL/3 is a reasonable
+starting point), not by lengthening the TTL alone — a longer TTL just
+means a crashed holder blocks the resource for longer.
+
+**Two separate processes both think they hold token 1 for the same
+resource — is fencing broken?** No — `LockManager` is a single in-memory
+object; nothing is shared between two separate `LockManager()` instances,
+even if you call `acquire()` with the same resource name on each. This
+project simulates *one authoritative lock server*; it deliberately does
+not implement the replication/consensus layer (that's the role
+[raft-consensus](https://github.com/pastbologanesh0101/raft-consensus)
+would play in a real deployment). If you see token collisions, you have
+two independent `LockManager` instances instead of one shared server —
+that's a wiring bug in how you're using the library, not a fencing bug.
+
+**Does this handle clock skew between machines?** `SystemClock` uses
+`time.monotonic()`, which is per-process and immune to wall-clock jumps
+(NTP corrections, manual clock changes) on the machine it runs on — TTL
+math never goes backwards because of that. But this only protects a
+*single* `LockManager` process. If you were to shard lock state across
+multiple authoritative servers (outside what this project does), those
+servers would need their own bounded-skew guarantees; a lease TTL is only
+as trustworthy as the clock that measured it.
+
+**Can two clients deadlock waiting on each other's locks?** No —
+`acquire()` never blocks. It returns `AcquireResult(success=False, ...)`
+immediately if the resource is held, and it's up to the caller to decide
+whether/when to retry. There's no wait-for-lock primitive here to deadlock
+on. The failure mode to watch for instead is a caller retrying `acquire()`
+in a tight loop with no backoff, which burns CPU without making progress
+any faster — back off (e.g. exponentially, with jitter) between retries.
