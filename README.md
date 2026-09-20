@@ -88,9 +88,9 @@ distributed-lock-manager/
 │   ├── lock_manager.py         # LockManager: acquire / renew / release
 │   └── protected_resource.py   # FencedResource: fencing-token enforcement
 ├── tests/
-│   └── test_lock_manager.py    # 23 unit tests
+│   └── test_lock_manager.py    # 26 unit tests
 ├── demo.py                      # runnable end-to-end demo (see below)
-├── .github/workflows/tests.yml  # CI: pytest/unittest on Python 3.11 & 3.12
+├── .github/workflows/tests.yml  # CI: pytest/unittest on Python 3.11, 3.12 & 3.13
 ├── LICENSE
 └── README.md
 ```
@@ -156,7 +156,7 @@ genuine thread race — only the "exactly one winner" property is guaranteed.)
 python3 -m unittest discover -v -s tests
 ```
 
-23 tests cover, among other things:
+26 tests cover, among other things:
 
 - Acquiring an unheld lock succeeds and issues a fencing token.
 - Acquiring an already-held (non-expired) lock by a different client is
@@ -178,7 +178,7 @@ python3 -m unittest discover -v -s tests
 - `release()` only frees a lock when called by the current, valid holder.
 
 CI (`.github/workflows/tests.yml`) runs the full suite plus the demo script
-on every push and pull request, on Python 3.11 and 3.12.
+on every push and pull request, on Python 3.11, 3.12, and 3.13.
 
 ## Design notes
 
