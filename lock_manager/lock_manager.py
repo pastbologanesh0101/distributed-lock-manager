@@ -109,6 +109,22 @@ class LockManager:
     def _is_expired(self, lease: _LeaseState, now: float) -> bool:
         return lease.expires_at <= now
 
+    @staticmethod
+    def _validate_identifiers(resource: str, client_id: str) -> None:
+        """Reject empty/blank resource or client identifiers.
+
+        An empty string is a perfectly valid dict key, so without this
+        check a caller with a bug that produces `resource=""` (e.g. a
+        template that failed to interpolate, or a missing config value)
+        would silently succeed and start contending with *every other*
+        empty-string caller on a single shared "" lock -- a confusing bug
+        to track down, since nothing raises anywhere near the real mistake.
+        """
+        if not resource or not resource.strip():
+            raise ValueError("resource must be a non-empty string")
+        if not client_id or not client_id.strip():
+            raise ValueError("client_id must be a non-empty string")
+
     # -- public API ---------------------------------------------------------
 
     def acquire(self, resource: str, client_id: str, ttl: float) -> AcquireResult:
@@ -119,8 +135,9 @@ class LockManager:
         A successful acquisition always issues a fencing token strictly
         greater than any token previously issued for this resource.
         """
+        self._validate_identifiers(resource, client_id)
         if ttl <= 0:
-            raise ValueError("ttl must be positive")
+            raise ValueError(f"ttl must be positive, got {ttl!r}")
 
         with self._guard:
             now = self._clock.now()
@@ -164,8 +181,9 @@ class LockManager:
         belongs to `client_id` -- an expired holder is no longer valid).
         The fencing token is unchanged by renewal.
         """
+        self._validate_identifiers(resource, client_id)
         if ttl <= 0:
-            raise ValueError("ttl must be positive")
+            raise ValueError(f"ttl must be positive, got {ttl!r}")
 
         with self._guard:
             now = self._clock.now()
@@ -200,6 +218,7 @@ class LockManager:
         """Release the lease on `resource`, if `client_id` is the current,
         valid (non-expired) holder. Returns True iff the lock was freed.
         """
+        self._validate_identifiers(resource, client_id)
         with self._guard:
             now = self._clock.now()
             existing = self._leases.get(resource)

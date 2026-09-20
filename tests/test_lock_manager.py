@@ -61,6 +61,18 @@ class AcquireTests(unittest.TestCase):
         self.assertTrue(second.success, "lease must be treated as expired at the exact boundary")
         self.assertGreater(second.token, first.token)
 
+    def test_acquire_rejects_empty_or_blank_resource_and_client_id(self):
+        # An empty string is a valid dict key, so without explicit
+        # validation a caller bug that produces resource="" would silently
+        # "succeed" and start contending with every other empty-key caller
+        # on one shared lock, instead of failing loudly at the call site.
+        with self.assertRaises(ValueError):
+            self.manager.acquire("", "client-A", ttl=10)
+        with self.assertRaises(ValueError):
+            self.manager.acquire("   ", "client-A", ttl=10)
+        with self.assertRaises(ValueError):
+            self.manager.acquire("res-1", "", ttl=10)
+
     def test_acquire_on_two_distinct_resources_does_not_conflict(self):
         a = self.manager.acquire("res-1", "client-A", ttl=10)
         b = self.manager.acquire("res-2", "client-B", ttl=10)
