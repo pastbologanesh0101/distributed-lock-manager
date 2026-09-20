@@ -10,7 +10,7 @@ from __future__ import annotations
 import threading
 import unittest
 
-from lock_manager import FakeClock, LockManager
+from lock_manager import FakeClock, LockAcquisitionError, LockManager
 from lock_manager.protected_resource import FencedResource, StaleFencingTokenError
 
 
@@ -247,6 +247,44 @@ class FencedResourceTests(unittest.TestCase):
             counter.write("shared-counter", 999, fencing_token=a.token)
 
         self.assertEqual(counter.read("shared-counter"), 42)
+
+
+class LeaseContextManagerTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.clock = FakeClock(start=0.0)
+        self.manager = LockManager(clock=self.clock)
+
+    def test_lease_context_manager_acquires_and_auto_releases_on_normal_exit(self):
+        with self.manager.lease("res-1", "client-A", ttl=10) as result:
+            self.assertTrue(result.success)
+            self.assertIsNotNone(self.manager.lease_info("res-1"))
+
+        # Released on the way out -- a different client can acquire it now.
+        self.assertIsNone(self.manager.lease_info("res-1"))
+        second = self.manager.acquire("res-1", "client-B", ttl=10)
+        self.assertTrue(second.success)
+
+    def test_lease_context_manager_releases_even_when_block_raises(self):
+        with self.assertRaises(ValueError):
+            with self.manager.lease("res-1", "client-A", ttl=10):
+                raise ValueError("boom")
+
+        # The lease must still have been released despite the exception --
+        # this is the exact case a hand-written try/finally is easy to get
+        # wrong by forgetting.
+        self.assertIsNone(self.manager.lease_info("res-1"))
+
+    def test_lease_context_manager_raises_lock_acquisition_error_when_contended(self):
+        self.manager.acquire("res-1", "client-A", ttl=10)
+
+        with self.assertRaises(LockAcquisitionError):
+            with self.manager.lease("res-1", "client-B", ttl=10):
+                self.fail("block body must not run if acquisition failed")
+
+        # client-A's lease must be untouched by the failed attempt.
+        info = self.manager.lease_info("res-1")
+        self.assertIsNotNone(info)
+        self.assertEqual(info.holder_id, "client-A")
 
 
 class ConcurrencyTests(unittest.TestCase):

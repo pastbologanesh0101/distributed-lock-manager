@@ -7,7 +7,13 @@ by clients whose leases have already expired.
 """
 
 from .clock import Clock, SystemClock, FakeClock
-from .lock_manager import LockManager, AcquireResult, RenewResult, LeaseInfo
+from .lock_manager import (
+    LockManager,
+    AcquireResult,
+    RenewResult,
+    LeaseInfo,
+    LockAcquisitionError,
+)
 from .protected_resource import FencedResource, StaleFencingTokenError
 
 __all__ = [
@@ -18,6 +24,7 @@ __all__ = [
     "AcquireResult",
     "RenewResult",
     "LeaseInfo",
+    "LockAcquisitionError",
     "FencedResource",
     "StaleFencingTokenError",
 ]

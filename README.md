@@ -29,6 +29,11 @@ considered free and another client can acquire it. This project's
   `client_id` is the current, still-valid holder.
 - `release(resource, client_id)` — frees the lease early, again only for the
   current, still-valid holder.
+- `lease(resource, client_id, ttl)` — a context-manager convenience wrapper
+  around `acquire`/`release`: `with manager.lease(...) as result:` acquires
+  on entry (raising `LockAcquisitionError` immediately if that fails) and
+  releases on exit, including when the `with` block raises — the case a
+  hand-written `try`/`finally` most often gets wrong.
 - Expiry is driven by an injectable `Clock`. Production code uses
   `SystemClock` (real wall-clock time); tests use `FakeClock`, which only
   advances when told to — so lease expiry is deterministic and testable
@@ -88,7 +93,7 @@ distributed-lock-manager/
 │   ├── lock_manager.py         # LockManager: acquire / renew / release
 │   └── protected_resource.py   # FencedResource: fencing-token enforcement
 ├── tests/
-│   └── test_lock_manager.py    # 26 unit tests
+│   └── test_lock_manager.py    # 29 unit tests
 ├── demo.py                      # runnable end-to-end demo (see below)
 ├── .github/workflows/tests.yml  # CI: pytest/unittest on Python 3.11, 3.12 & 3.13
 ├── LICENSE
@@ -156,7 +161,7 @@ genuine thread race — only the "exactly one winner" property is guaranteed.)
 python3 -m unittest discover -v -s tests
 ```
 
-26 tests cover, among other things:
+29 tests cover, among other things:
 
 - Acquiring an unheld lock succeeds and issues a fencing token.
 - Acquiring an already-held (non-expired) lock by a different client is

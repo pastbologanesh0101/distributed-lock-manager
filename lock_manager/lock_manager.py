@@ -73,6 +73,50 @@ class RenewResult:
         return self.success
 
 
+class LockAcquisitionError(RuntimeError):
+    """Raised by the `LockManager.lease()` context manager when the lock
+    could not be acquired on entry."""
+
+    def __init__(self, result: AcquireResult) -> None:
+        self.result = result
+        super().__init__(
+            f"could not acquire lease on {result.resource!r} for "
+            f"{result.client_id!r}: {result.reason}"
+        )
+
+
+class _LeaseContext:
+    """Context manager returned by `LockManager.lease()`.
+
+    Acquires the lease on `__enter__` (raising `LockAcquisitionError`
+    immediately if that fails -- this does not block or retry) and
+    releases it on `__exit__`, including on the exception path. That's
+    the case callers most often get wrong by hand: forgetting to release
+    a lock because an exception skipped past their `release()` call.
+    """
+
+    __slots__ = ("_manager", "_resource", "_client_id", "_ttl", "_acquired")
+
+    def __init__(self, manager: "LockManager", resource: str, client_id: str, ttl: float) -> None:
+        self._manager = manager
+        self._resource = resource
+        self._client_id = client_id
+        self._ttl = ttl
+        self._acquired = False
+
+    def __enter__(self) -> AcquireResult:
+        result = self._manager.acquire(self._resource, self._client_id, self._ttl)
+        if not result.success:
+            raise LockAcquisitionError(result)
+        self._acquired = True
+        return result
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        if self._acquired:
+            self._manager.release(self._resource, self._client_id)
+        return False
+
+
 class _LeaseState:
     """Mutable internal record for a single resource's current lease."""
 
@@ -252,3 +296,20 @@ class LockManager:
         """The highest fencing token ever issued for `resource` (0 if none)."""
         with self._guard:
             return self._last_token.get(resource, 0)
+
+    def lease(self, resource: str, client_id: str, ttl: float) -> _LeaseContext:
+        """Convenience context manager: acquire on entry, release on exit.
+
+        Usage:
+            with manager.lease("resource-a", "client-1", ttl=10) as result:
+                token = result.token
+                ...  # do work; the lease is released on the way out, even
+                     # if this block raises.
+
+        Raises `LockAcquisitionError` immediately if the lease cannot be
+        acquired -- this does not block or retry. For that reason it's
+        best suited to callers that already have their own retry/backoff
+        loop around a `try: ... with manager.lease(...): ...` block, since
+        the context manager itself won't wait for the resource to free up.
+        """
+        return _LeaseContext(self, resource, client_id, ttl)
