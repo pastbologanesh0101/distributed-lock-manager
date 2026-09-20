@@ -1,5 +1,9 @@
 # Distributed Lock Manager
 
+[![tests](https://github.com/pastbologanesh0101/distributed-lock-manager/actions/workflows/tests.yml/badge.svg)](https://github.com/pastbologanesh0101/distributed-lock-manager/actions/workflows/tests.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](.github/workflows/tests.yml)
+
 A lease-based distributed mutual-exclusion lock service, implemented in pure
 Python (standard library only). It simulates a single, authoritative
 lock-server — the same role a real system like etcd, Zookeeper, or Chubby
@@ -10,6 +14,18 @@ This is a companion project to [raft-consensus](https://github.com/pastbologanes
 (leader election + log replication). Where that project builds a replicated
 log, this project builds the primitive that typically sits *on top of* one
 in production: a distributed lock, with leases and fencing tokens.
+
+## Table of contents
+
+- [Why leases, not just locks](#why-leases-not-just-locks)
+- [Why fencing tokens matter (the "GC pause" problem)](#why-fencing-tokens-matter-the-gc-pause-problem)
+- [Project layout](#project-layout)
+- [Running the demo](#running-the-demo)
+- [Running the tests](#running-the-tests)
+- [Design notes](#design-notes)
+- [Troubleshooting / FAQ](#troubleshooting--faq)
+- [Contributing](CONTRIBUTING.md)
+- [Changelog](CHANGELOG.md)
 
 ## Why leases, not just locks
 
