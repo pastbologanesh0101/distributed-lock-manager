@@ -45,6 +45,22 @@ class AcquireTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.manager.acquire("res-1", "client-A", ttl=0)
 
+    def test_lease_considered_expired_exactly_at_expiry_boundary(self):
+        # expires_at is computed as now + ttl, and _is_expired treats
+        # `expires_at <= now` as expired. So a lease acquired at t=0 with
+        # ttl=5 must be considered expired the instant the clock reaches
+        # exactly t=5, not just strictly after it. An off-by-one here would
+        # let a lease linger one tick too long (a safety bug) or expire one
+        # tick too early (a false rejection of a still-valid holder).
+        first = self.manager.acquire("res-1", "client-A", ttl=5)
+        self.clock.advance(5)  # now == expires_at exactly
+
+        self.assertIsNone(self.manager.lease_info("res-1"))
+
+        second = self.manager.acquire("res-1", "client-B", ttl=5)
+        self.assertTrue(second.success, "lease must be treated as expired at the exact boundary")
+        self.assertGreater(second.token, first.token)
+
     def test_acquire_on_two_distinct_resources_does_not_conflict(self):
         a = self.manager.acquire("res-1", "client-A", ttl=10)
         b = self.manager.acquire("res-2", "client-B", ttl=10)
@@ -95,6 +111,22 @@ class RenewTests(unittest.TestCase):
     def test_renew_nonexistent_lease_is_rejected(self):
         renewed = self.manager.renew("never-acquired", "client-A", ttl=10)
         self.assertFalse(renewed.success)
+
+    def test_renew_rejects_non_positive_ttl(self):
+        # renew() validates ttl the same way acquire() does, but that check
+        # had no test of its own -- a regression here would only be caught
+        # accidentally, e.g. by a caller passing ttl=0 in production.
+        self.manager.acquire("res-1", "client-A", ttl=10)
+
+        with self.assertRaises(ValueError):
+            self.manager.renew("res-1", "client-A", ttl=0)
+        with self.assertRaises(ValueError):
+            self.manager.renew("res-1", "client-A", ttl=-5)
+
+        # The existing valid lease must be unaffected by the rejected calls.
+        info = self.manager.lease_info("res-1")
+        self.assertIsNotNone(info)
+        self.assertEqual(info.holder_id, "client-A")
 
 
 class FencingTokenSequenceTests(unittest.TestCase):
